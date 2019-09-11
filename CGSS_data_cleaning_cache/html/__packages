@@ -1,0 +1,13 @@
+base
+knitr
+tidyr
+dplyr
+stringr
+purrr
+data.table
+ggplot2
+gridExtra
+readstata13
+FactoMineR
+factoextra
+jtools
