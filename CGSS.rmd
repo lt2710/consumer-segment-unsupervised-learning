@@ -1,0 +1,1474 @@
+---
+title: "Stratified lifestyle and social class in urban China"
+author: "Langyi Tian and Aurelien Boucher"
+date: "Aug 2019"
+output:
+  xaringan::moon_reader:
+    css: ["default", "default-fonts", "custom_Xaringan.css"]
+    lib_dir: libs
+    keep_md: true
+    self_contained: false
+    nature:
+      ratio: 16:9
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      countdown: 60000
+---
+exclude: true
+
+class: left, top
+background-image: url(images/roadmap.png)
+background-size: 100%
+background-position: 50% 280%
+
+```{r setup, include=FALSE}
+#Set up default knitr chunk options
+library("knitr")
+knitr::opts_chunk$set(
+  echo = FALSE,
+  eval = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.height = 9,
+  fig.width = 15,
+  fig.align = "center",
+  cache = TRUE,
+  cache.lazy = FALSE
+)
+options(htmltools.dir.version = FALSE)
+```  
+
+```{r theme-map, include=FALSE}
+#set up theme map
+theme_simplemap <- function(base_size = 9,
+                            base_family = "") {
+  theme_bw(base_size = base_size, base_family = base_family) %+replace%
+    theme(
+      axis.line = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank(),
+      panel.background = element_blank(),
+      panel.border = element_blank(),
+      panel.grid = element_blank(),
+      panel.spacing = unit(0, "lines"),
+      plot.background = element_blank(),
+      legend.position = "none"
+    )
+}
+```
+
+##Setup
+```{r packages, message = FALSE, warning = FALSE, echo=FALSE}
+# Load packages.
+packages <- c("tidyr", 
+              "dplyr",
+              "stringr",
+              "purrr", 
+              "data.table", 
+              "knitr",
+              "ggplot2",
+              "gridExtra",
+              "readstata13",
+              "FactoMineR",
+              "factoextra",
+              "jtools"
+              )
+packages <- lapply(packages, FUN = function(x) {
+  if(!require(x, character.only = TRUE)) {
+    install.packages(x)
+  library(x, character.only = TRUE)
+  }
+}
+)
+```
+
+```{r, echo=TRUE, warning=FALSE}
+setwd("C:/Users/Tianl/Desktop/housing_project/CGSS")
+```
+
+```{r, echo=TRUE, warning=FALSE}
+#Function to recode numeric variables to factor with 5 levels according to top values
+recode_numeric <- function(var, prefix = "", tile = 0.9) {
+  top1 <-
+    quantile(var, tile, na.rm = TRUE)#First group by default is top 10%
+  top2 <- top1 * 2 / 3#Bottome line of second group is 2/3 of first one
+  top3 <- top2 / 2#Next group's bottom line is 1/2 of previous
+  top4 <- top3 / 3#Next group's bottom line is 1/3 of previous
+  var <- var %>% cut(
+    breaks = c(-Inf, top4, top3, top2, top1, Inf),
+    labels = c(
+      str_c("v.low.", prefix, collapse = ""),
+      str_c("low.", prefix, collapse = ""),
+      str_c("mid.", prefix, collapse = ""),
+      str_c("high.", prefix, collapse = ""),
+      str_c("v.high.", prefix, collapse = "")
+    )
+  )
+  return(var)
+}
+```
+
+##Data preparation
+```{r, warning=FALSE}
+#Import data and labels on household economic activiy
+cgss_raw <- read.dta13("cgss2013_14.dta", convert.factors = TRUE)
+#Focus only on urban households
+cgss <- cgss_raw %>% filter(s5a %>% as.integer() %in% c(2, 3, 4, 5))
+```
+
+```{r}
+cgss$age <- 2013 - cgss$a3a
+cgss$age_group <-
+  cut(
+    cgss$age,
+    breaks = c(quantile(cgss$age, probs = seq(0, 1, by = 0.2))),
+    labels = c("age_v_low", "age_low", "age_mid", "age_high", "age_v_high"),
+    include.lowest = TRUE
+  )
+cgss$age_group %>% table()
+```
+
+```{r}
+cgss$province <-
+  cgss$s41 %>% as.integer %>% recode_factor(
+    `1` = "Shanghai Municipality",
+    `2` = "Yunnan Province",
+    `3` = "Inner Mongolia Autonomous Region",
+    `4` = "Beijing Municipality",
+    `5` = "Jilin Province",
+    `6` = "Sichuan Province",
+    `7` = "Tianjin Municipality",
+    `8` = "Ningxia Hui Autonomous Region",
+    `9` = "Anhui Province",
+    `10` = "Shandong Province",
+    `11` = "Shanxi Province",
+    `12` = "Guangdong Province",
+    `13` = "Guangxi Zhuang Autonomous Region",
+    `15` = "Jiangsu Province",
+    `16` = "Jiangxi Province",
+    `17` = "Hebei Province",
+    `18` = "Henan Province",
+    `19` = "Zhejiang Province",
+    `21` = "Hubei Province",
+    `22` = "Hunan Province",
+    `23` = "Gansu province",
+    `24` = "Fujian Province",
+    `26` = "Guizhou Province",
+    `27` = "Liaoning Province",
+    `28` = "Chongqing Municipality",
+    `29` = "Shaanxi Province",
+    `30` = "Qinghai Province",
+    `31` = "Heilongjiang Province"
+  )
+cgss$province %>% table()
+```
+
+```{r}
+cgss$gender <- cgss$a2 %>% as.integer %>% recode_factor(`4` = "male",
+                                                        `5` = "female")
+cgss$gender %>% table()
+```
+
+```{r}
+cgss$subjclass <- cgss$a43a %>% as.integer()
+cgss$subjclass[cgss$subjclass < 0] <- NA
+cgss$subjclass[cgss$subjclass %in% c(8:10)] <- 8
+cgss$subjclass <- cgss$subjclass %>% factor()
+cgss$subjclass %>% table()
+```
+
+```{r housing community}
+cgss$community <- cgss$s5b %>% as.integer()
+cgss$community[cgss$community == 8] <- NA
+cgss$community <-
+  cgss$community %>% as.integer() %>% recode(
+    `1` = "Old city zone",
+    `2` = "working unit community",
+    `3` = "rural/public housing",
+    `4` = "commodity housing",
+    `5` = "commodity housing",
+    `6` = "rural/public housing",
+    `7` = "rural/public housing"
+  )
+cgss$community %>% table
+```
+
+```{r education}
+cgss$education <- cgss$a7a %>% as.integer()
+cgss$education[cgss$education %in% c(1, 17)] <- NA
+cgss$education <- cgss$education %>% recode_factor(
+  `4` = "MS&Below",
+  `5` = "MS&Below",
+  `6` = "MS&Below",
+  `7` = "MS&Below",
+  `8` = "High school",
+  `9` = "High school",
+  `10` = "High school",
+  `11` = "Voc",
+  `12` = "Voc",
+  `13` = "Voc",
+  `14` = "Bache",
+  `15` = "Bache",
+  `16` = "Bache"
+)
+cgss$education_yrs <- cgss$a7a %>% as.integer()
+cgss$education_yrs[cgss$education_yrs %in% c(1, 17)] <- NA
+cgss$education_yrs <- cgss$education_yrs %>% recode(
+  `4` = 0,
+  `5` = 6,
+  `6` = 6,
+  `7` = 9,
+  `8` = 9,
+  `9` = 9,
+  `10` = 9,
+  `11` = 9,
+  `12` = 12,
+  `13` = 12,
+  `14` = 13,
+  `15` = 13,
+  `16` = 15
+)
+cgss$education %>% table
+```
+
+```{r fam income}
+cgss$fincome <- cgss$a62
+cgss$fincome[cgss$fincome == 9999996] <- 1000000
+cgss$fincome[cgss$fincome == 9999997] <- NA
+cgss$fincome[cgss$fincome == 9999998] <- NA
+cgss$fincome[cgss$fincome == 9999999] <- NA
+cgss$fincome_ln <- log(cgss$fincome + 50)
+cgss$fincome_group <-
+  cut(
+    cgss$fincome_ln,
+    breaks = c(quantile(
+      cgss$fincome_ln,
+      probs = seq(0, 1, 0.2),
+      na.rm = TRUE
+    )),
+    labels = c(
+      "income_v_low",
+      "income_low",
+      "income_mid",
+      "income_high",
+      "income_v_high"
+    ),
+    include.lowest = TRUE
+  )
+cgss$fincome_group %>% table()
+```
+
+```{r home}
+cgss$home_num <- cgss$a65
+cgss$home_num[cgss$home_num < 0] <- NA
+cgss$home <- cgss$home_num
+cgss$home[cgss$home > 2] <- 3
+cgss$home <- cgss$home %>% recode_factor(
+  `0` = "No home",
+  `1` = "One home",
+  `2` = "Two homes or more",
+  `3` = "Two homes or more"
+)
+table(cgss$home)
+```
+
+```{r car}
+cgss$car <- cgss$a66 %>% as.integer()
+cgss$car[cgss$car == 1] <- NA
+cgss$car <- cgss$car %>% recode_factor(`4` = "owns car",
+                                       `5` = "no car")
+cgss$car %>% table()
+```
+
+```{r asset}
+cgss$car_num <- cgss$car %>% as.integer() * -1 + 2
+
+cgss <- cgss %>% mutate(
+  finance = (
+    cgss$a671 %>% as.integer() == 5 |
+      cgss$a672 %>% as.integer() == 5 |
+      cgss$a673 %>% as.integer() == 5 |
+      cgss$a674 %>% as.integer() == 5 |
+      cgss$a675 %>% as.integer() == 5 |
+      cgss$a676 %>% as.integer() == 5 |
+      cgss$a677 %>% as.integer() == 5 |
+      cgss$a678 %>% as.integer() == 5
+  )
+)
+cgss <- cgss %>% mutate(asset = home_num + car_num + finance)
+cgss$asset[cgss$asset > 4] <- 4
+cgss$asset <- cgss$asset %>% str_c(" asset") %>% as.factor()
+cgss$asset %>% table()
+```
+
+```{r EGP occupation}
+cgss$occupation <- cgss$EGP %>% recode_factor(
+  `1` = "Higher service",
+  `2` = "Lower service",
+  `3` = "Routine clerical/sales",
+  `4` = "Small employer",
+  `5` = "Independent",
+  `7` = "Manual foreman",
+  `8` = "Skilled manual",
+  `9` = "Semi-unskilled manual",
+  `10` = "Farm workers",
+  `11` = "Farm workers"
+)
+cgss$occupation %>% table()
+```
+
+
+```{r party}
+cgss$party <- cgss$a10 %>% as.integer()
+cgss$party[cgss$party == 1] <- NA
+cgss$party <- cgss$party %>% recode_factor(
+  `4` = "party member",
+  `5` = "non party member",
+  `6` = "non party member",
+  `7` = "non party member"
+)
+cgss$party %>% table()
+```
+
+```{r hukou}
+cgss$hukou <- cgss$a18 %>% as.integer()
+cgss$hukou[cgss$hukou %in% c(1, 10, 11)] <- NA
+cgss$hukou <- cgss$hukou %>% recode_factor(
+  `4` = "agrecultural hukou",
+  `5` = "non-agricultural hukou",
+  `6` = "agrecultural hukou",
+  `7` = "agrecultural hukou",
+  `8` = "non-agricultural hukou",
+  `9` = "non-agricultural hukou"
+)
+cgss$hukou %>% table()
+```
+```{r leisure}
+leisure <- NULL
+for (i in 1:12) {
+  number <- c("01",
+              "02",
+              "03",
+              "04",
+              "05",
+              "06",
+              "07",
+              "08",
+              "09",
+              "10",
+              "11",
+              "12")
+  activity <- c(
+    "Watch_TV_DVD",
+    "Movie",
+    "Shopping",
+    "Book_news_mgz",
+    "Music_show_exhibition",
+    "visit_relative",
+    "visit_friend",
+    "music_at_home",
+    "do_sports",
+    "go_watch_sports",
+    "handcraftwork",
+    "internet"
+  )
+  varname <- paste("a30", number[i], sep = "")
+  var <- cgss[[varname]] %>% as.integer()
+  var[var %in% c(1, 2, 3)] <- NA
+  for (j in var[is.na(var) == FALSE] %>% unique() %>% sort()) {
+    percent <- var[var == j] %>% length() / var %>% length()
+    highbrow <- j > mean(var, na.rm = TRUE)
+    if (percent < 0.08) {
+      var[var == j] <- j - (highbrow * 2 - 1)
+    }
+  }
+  var <- var %>% recode_factor(
+    `4` = paste(activity[i], "_daily", sep = ""),
+    `5` = paste(activity[i], "_weekly", sep = ""),
+    `6` = paste(activity[i], "_monthly", sep = ""),
+    `7` = paste(activity[i], "_yearly", sep = ""),
+    `8` = paste(activity[i], "_never", sep = "")
+  )
+  leisure <- leisure %>% cbind(var %>% as.character())
+}
+leisure <- leisure %>% as.data.frame()
+names(leisure) <- activity
+lapply(leisure, table)
+cgss <- cbind(cgss, leisure)
+```
+
+```{r consumption}
+consumption <- NULL
+for (i in 1:13) {
+  number <- c("01",
+              "02",
+              "03",
+              "04",
+              "05",
+              "06",
+              "07",
+              "08",
+              "09",
+              "10",
+              "11",
+              "12",
+              "13")
+  activity <- c(
+    "only_buy_necissity",
+    "eat_out_social",
+    "shop_brands",
+    "stressful_work",
+    "go_by_car",
+    "high_end_durables",
+    "high_end_artwork_at_home",
+    "no_social_w_lower_class",
+    "comfortable_with_life",
+    "music_art_for_leisure",
+    "watch_TV_at_home",
+    "poker_majiang_at_weekends",
+    "work_out_at_gyms"
+  )
+  varname <- paste("b11", number[i], sep = "")
+  var <- cgss[[varname]] %>% as.integer()
+  var[var %in% c(1, 2, 3)] <- NA
+  for (j in var[is.na(var) == FALSE] %>% unique() %>% sort()) {
+    percent <- var[var == j] %>% length() / var %>% length()
+    highbrow <- j > mean(var, na.rm = TRUE)
+    if (percent < 0.08) {
+      var[var == j] <- j - (highbrow * 2 - 1)
+    }
+  }
+  var <-
+    var %>% recode_factor(
+      `4` = paste(activity[i], "_very_likely", sep = ""),
+      `5` = paste(activity[i], "_likely", sep = ""),
+      `6` = paste(activity[i], "_unlikely", sep = ""),
+      `7` = paste(activity[i], "_very_unlikely", sep = "")
+    )
+  consumption <- consumption %>% cbind(var %>% as.character())
+}
+consumption <- consumption %>% as.data.frame()
+names(consumption) <- activity
+cgss <- cbind(cgss, consumption)
+lapply(consumption, table)
+```
+
+```{r}
+#Save data for multiple correspondence analysis
+dta_merged <- cgss %>% select(
+  id,
+  age:work_out_at_gyms,-visit_friend,-visit_relative,-stressful_work,-comfortable_with_life,-no_social_w_lower_class
+) %>% na.omit()
+dta_big <- inner_join(dta_merged %>% select(id),
+                      cgss %>% select(id, age:work_out_at_gyms),
+                      by = "id")
+dta_big <- inner_join(dta_big,
+                      cgss_raw,
+                      by = "id")
+```
+
+##Construct social space
+```{r}
+#MCA based on the data
+dta_mca_society <- dta_merged %>% select(age_group,
+                                         gender,
+                                         fincome_group,
+                                         education,
+                                         occupation,
+                                         party,
+                                         hukou)
+mca_society <- MCA(
+  dta_mca_society,
+  ncp = 5,
+  na.method = "Average",
+  method = "Burt",
+  graph = FALSE
+)
+```
+
+```{r, echo=TRUE, warning=FALSE, fig.height = 7, fig.width =15, fig.align = "center"}
+#Visualize MCA outcome
+fviz_mca_var(
+  mca_society,
+  axes = c(1, 3),
+  choice = "var.cat",
+  repel = TRUE,
+  map = "symmetric",
+  shape.var = "circle",
+  col.var = "orange2",
+  col.quali.sup = "black"
+) +
+  ggtitle("Space of Lifestyles in urban China",
+          subtitle = "Multiple Correspondence Analysis with Burt Method") +
+  labs(caption = "Source: CGSS2013") +
+  theme_classic()
+```
+
+##Construct lifestyle space
+```{r}
+#MCA based on the data
+dta_mca_leisure <- dta_merged %>% select(
+  age_group,
+  gender,
+  fincome_group,
+  asset,
+  education,
+  occupation,
+  party,
+  hukou,
+  Watch_TV_DVD:work_out_at_gyms
+)
+mca_leisure <- MCA(
+  dta_mca_leisure,
+  quali.sup = 1:8,
+  ncp = 5,
+  na.method = "Average",
+  method = "Burt",
+  graph = FALSE
+)
+```
+
+```{r, echo=TRUE, warning=FALSE, fig.height = 15, fig.width =15, fig.align = "center"}
+#Visualize MCA outcome
+fviz_mca_var(
+  mca_leisure,
+  axes = c(1, 3),
+  choice = "var.cat",
+  repel = TRUE,
+  map = "symmetric",
+  shape.var = "circle",
+  col.var = "orange2",
+  col.quali.sup = "black"
+) +
+  ggtitle("Space of Lifestyles in urban China",
+          subtitle = "Multiple Correspondence Analysis with Burt Method") +
+  labs(caption = "Source: CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+##Construct lifestyle clusters
+```{r}
+km_leisure <- data.frame(mca_leisure$ind$coord)
+km_dist <- cluster::daisy(km_leisure)
+```
+
+```{r}
+kmeans_test <- function(num, nboot) {
+  set.seed(1)
+  class_km <- fpc::clusterboot(
+    km_leisure,
+    B = nboot,
+    bootmethod = "boot",
+    multipleboot = TRUE,
+    dissolution = 0.5,
+    recover = 0.7,
+    count = FALSE,
+    showplots = FALSE,
+    clustermethod = fpc::kmeansCBI,
+    iter.max = 10000,
+    algorithm = "Lloyd",
+    krange = num
+  )
+  class_km %>% print()
+  return(class_km$result$result)
+}
+```
+
+```{r}
+class_km_3 <- kmeans_test(3, 1000)
+```
+
+```{r, eval=FALSE}
+class_km_4<-kmeans_test(4,1000)
+```
+
+```{r, eval=FALSE}
+class_km_5<-kmeans_test(5,1000)
+```
+
+```{r, eval=FALSE}
+class_km_6<-kmeans_test(6,1000)
+```
+
+```{r, eval=FALSE}
+class_km_7<-kmeans_test(7,1000)
+```
+
+```{r, eval=FALSE}
+class_km_8<-kmeans_test(8,1000)
+```
+
+```{r, eval=FALSE}
+class_km_9<-kmeans_test(9,1000)
+```
+
+```{r}
+ward_kmeans <- function(dta, num) {
+  res <- hcut(
+    dta,
+    k = num,
+    hc_func = "hclust",
+    hc_method = "ward.D",
+    hc_metric = "euclidean",
+    stand = FALSE,
+    graph = FALSE
+  )
+  #Compute the centroid of hierarchical clustering
+  clusters <- res$cluster
+  clust.centroid <- function(i, dat, clusters) {
+    ind = (clusters == i)
+    colMeans(dat[ind, ])
+  }
+  centroid <-
+    sapply(unique(clusters), clust.centroid, dta, clusters) %>% t()
+  #K-means clustering using the centroid of hierarchical clustering as initial assignment
+  groupes.kmeans <- kmeans(dta,
+                           centers = centroid,
+                           algorithm = "Lloyd",
+                           iter.max = 1000)
+  return(groupes.kmeans)
+}
+```
+
+```{r, eval=FALSE}
+#Compute optimal number of clusters of K-means
+bnclust_gap_plot1 <- fviz_nbclust(
+  km_leisure,
+  ward_kmeans,
+  k.max = 10,
+  nboot = 10,
+  method = "wss"
+) +
+  ggtitle("Within Sum of Square by Three Measures") +
+  theme_classic()
+bnclust_gap_plot2 <- fviz_nbclust(
+  km_leisure,
+  ward_kmeans,
+  k.max = 10,
+  nboot = 10,
+  method = "silhouette"
+) +
+  theme_classic()
+bnclust_gap_plot3 <- fviz_nbclust(
+  km_leisure,
+  ward_kmeans,
+  k.max = 10,
+  nboot = 10,
+  method = "gap_stat"
+) +
+  labs(caption = "Source: MCA based on CFPS") +
+  theme_classic()
+grid.arrange(bnclust_gap_plot1,
+             bnclust_gap_plot2,
+             bnclust_gap_plot3,
+             ncol = 1)
+```
+
+```{r}
+km_leisure <- km_leisure
+res <- hcut(
+  km_leisure,
+  k = 7,
+  hc_func = "hclust",
+  hc_method = "ward.D",
+  hc_metric = "euclidean",
+  stand = FALSE,
+  graph = FALSE
+)
+#Visualize dendrogram
+hcd <- as.dendrogram(res)
+hcd_cut <- cut(hcd, h = 10)
+fviz_dend(hcd_cut$upper,
+          k = 3,
+          palette = "jco",
+          show_labels = FALSE) +
+  ggtitle("Dendrogram Plot from Hierarchical Clustering",
+          subtitle = "With Ward.D measure and Euclidean distance, cut at height of 100") +
+  labs(caption = "Source: MCA based on CFPS") +
+  theme_classic()
+```
+
+##Map lifesyle clusters on lifestyle space
+```{r}
+ward_kmeans_3 <- ward_kmeans(km_leisure, 4)
+clusters_lifestyle <- ward_kmeans_3$cluster
+#MCA based on the data
+dta_mca_social <- cbind(clusters_lifestyle,
+                        dta_merged %>% select(Watch_TV_DVD:work_out_at_gyms)) %>%
+  as.data.frame()
+mca_social_0 <- MCA(
+  dta_mca_social,
+  quali.sup = 1,
+  ncp = 3,
+  na.method = "Average",
+  method = "Burt",
+  graph = FALSE
+)
+#Visualize MCA outcome
+fviz_mca_var(
+  mca_social_0,
+  axes = c(1, 3),
+  repel = FALSE,
+  choice = "var.cat",
+  map = "symmetric",
+  shape.var = "circle",
+  col.var = "orange2",
+  col.quali.sup = "black"
+) +
+  ggtitle("Social Space in urban China",
+          subtitle = "Multiple Correspondence Analysis with Burt Method") +
+  labs(caption = "Source: CGSS 2013") +
+  theme_classic()
+```
+
+```{r}
+#Visualize individual households in MCA by several measures
+#Visualize individual households in MCA by several measures
+fviz_mca_ind(
+  mca_social_0,
+  axes = c(1, 3),
+  label = "none",
+  habillage = 1,
+  palette = "Set1",
+  addEllipses = TRUE,
+  ellipse.level = 0.5
+) +
+  ggtitle("Lifestyle categories projected on the space of lifestyle in urban China",
+          subtitle = "Ellipse covering 50% in group") +
+  labs(caption = "Source: Bootstrapped hierarchical and K-means Clustering clustering based on CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+##Map lifesyle clusters on Social space
+```{r}
+#MCA based on the data
+dta_mca_social <- cbind(
+  clusters_lifestyle,
+  dta_merged %>% select(fincome_group,
+                        education,
+                        occupation,
+                        party,
+                        hukou)
+) %>% as.data.frame()
+mca_social <- MCA(
+  dta_mca_social,
+  quali.sup = 1,
+  ncp = 3,
+  na.method = "Average",
+  method = "Burt",
+  graph = FALSE
+)
+#Visualize MCA outcome
+fviz_mca_var(
+  mca_social,
+  axes = c(1, 3),
+  repel = FALSE,
+  choice = "var.cat",
+  map = "symmetric",
+  shape.var = "circle",
+  col.var = "orange2",
+  col.quali.sup = "black"
+) +
+  ggtitle("Social Space in urban China",
+          subtitle = "Multiple Correspondence Analysis with Burt Method") +
+  labs(caption = "Source: CGSS 2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+```{r}
+#Visualize individual households in MCA by several measures
+fviz_mca_ind(
+  mca_social,
+  axes = c(1, 3),
+  label = "none",
+  habillage = 1,
+  palette = "Set1",
+  addEllipses = TRUE,
+  ellipse.level = 0.5
+) +
+  ggtitle(
+    "Verifying Structural homology: lifestyle categories projected on the social space",
+    subtitle = "Ellipse covering 50% in group"
+  ) +
+  labs(caption = "Source: Bootstrapped K-medoid clustering on CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+##Geographical map
+```{r}
+dta_final <-
+  cbind(dta_big, km_leisure, clusters_lifestyle) %>% mutate(fincome = fincome /
+                                                              10000)
+save.dta13(dta_final, file = "cgss_dta_merged.dta")
+library(rgdal)
+library(tmap)
+parcel <- readOGR(dsn = "chn_admbnda_adm1_ocha",
+                  layer = "chn_admbnda_adm1_ocha")
+```
+
+```{r}
+dta_final$lower <- dta_final$clusters_lifestyle == 1
+dta_final$middle <- dta_final$clusters_lifestyle == 2
+dta_final$cultural <- dta_final$clusters_lifestyle == 3
+dta_final$economic <- dta_final$clusters_lifestyle == 4
+parcel@data$province <- parcel@data$ADM1_EN
+summary_province <- dta_final %>% group_by(province) %>% summarise(
+  n(),
+  lower = (sum(lower) *
+             100) / n(),
+  middle = (sum(middle) *
+              100) / n(),
+  cultural =
+    (sum(cultural) * 100) / n(),
+  economic =
+    (sum(economic) * 100) / n(),
+  fincome = median(fincome, na.rm = TRUE),
+  education =
+    mean(education_yrs, na.rm = TRUE)
+)
+parcel@data <-
+  left_join(parcel@data, summary_province, by = "province")
+```
+
+```{r}
+tm_shape(parcel) +
+  tm_fill("cultural",
+          title = "%Dominant class in urban area",
+          palette = "BuPu") +
+  tm_borders(col = "black") +
+  tm_layout(
+    legend.title.size = 2,
+    legend.text.size = 1.5,
+    legend.position = c("left", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0
+  )
+```
+
+```{r}
+tm_shape(parcel) +
+  tm_fill("economic",
+          title = "%Working class in urban area",
+          palette = "GnBu") +
+  tm_borders(col = "black") +
+  tm_layout(
+    legend.title.size = 2,
+    legend.text.size = 1.5,
+    legend.position = c("left", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0
+  )
+```
+
+```{r}
+tm_shape(parcel) +
+  tm_fill("lower",
+          title = "%Proletarian class in urban area",
+          palette = "OrRd") +
+  tm_borders(col = "black") +
+  tm_layout(
+    legend.title.size = 2,
+    legend.text.size = 1.5,
+    legend.position = c("left", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0
+  )
+```
+
+```{r}
+tm_shape(parcel) +
+  tm_fill("middle",
+          title = "%Proletarian class in urban area",
+          palette = "OrRd") +
+  tm_borders(col = "black") +
+  tm_layout(
+    legend.title.size = 2,
+    legend.text.size = 1.5,
+    legend.position = c("left", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0
+  )
+```
+
+##Lifestyle on subjective class perception
+```{r}
+dta <- cbind(
+  dim1 = km_leisure$Dim.1,
+  dim2 = km_leisure$Dim.2,
+  dim3 = km_leisure$Dim.3,
+  dim4 = km_leisure$Dim.4,
+  dim5 = km_leisure$Dim.5,
+  dta_final
+)
+lm_1 <- lm(
+  subjclass %>% as.numeric() ~
+    age +
+    gender +
+    fincome +
+    asset %>% as.numeric() +
+    education_yrs +
+    occupation %>% as.numeric() +
+    party +
+    hukou
+  ,
+  data = dta
+)
+lm_2 <- lm(
+  subjclass %>% as.numeric() ~
+    age +
+    gender +
+    fincome +
+    asset %>% as.numeric() +
+    education_yrs +
+    occupation %>% as.numeric() +
+    party +
+    hukou +
+    clusters_lifestyle
+  ,
+  data = dta
+)
+lm_3 <- lm(
+  subjclass %>% as.numeric() ~
+    age +
+    gender +
+    fincome +
+    asset %>% as.numeric() +
+    education_yrs +
+    occupation %>% as.numeric() +
+    party +
+    hukou +
+    dim1 +
+    dim2 +
+    dim3
+  ,
+  data = dta
+)
+export_summs(lm_1, lm_2, lm_3)
+```
+
+
+
+
+
+
+
+
+
+##Determining optimal number for social and lifestyle clusters
+```{r}
+dta_km <- cbind(
+  km_leisure %>% select(dim1 = Dim.1,
+                        dim2 = Dim.2),
+  dta_merged %>% select(fincome,
+                        education_yrs,
+                        asset,
+                        occupation,
+                        party,
+                        hukou)
+) %>% as.data.frame()
+g.dist <- cluster::daisy(dta_km, metric = "gower")
+```
+
+###Global optimal
+```{r}
+cluster_test <- function(num, nboot) {
+  set.seed(1)
+  class_pamk <- fpc::clusterboot(
+    g.dist,
+    B = nboot,
+    distances = TRUE,
+    bootmethod = "boot",
+    multipleboot = TRUE,
+    dissolution = 0.5,
+    recover = 0.7,
+    count = FALSE,
+    showplots = FALSE,
+    clustermethod = fpc::pamkCBI,
+    k = num,
+    criterion = "asw",
+    usepam = TRUE
+  )
+  class_pamk %>% print()
+  return(class_pamk$result$result)
+}
+```
+
+```{r, eval=FALSE}
+class_pamk_2 <- cluster_test(2, 100)
+```
+
+```{r, eval=FALSE}
+class_pamk_3 <- cluster_test(3, 100)
+save(class_pamk_3, file = "class_pamk_3.RData")
+```
+
+```{r, eval=FALSE}
+class_pamk_4<-cluster_test(4,100)
+```
+
+```{r, eval=FALSE}
+class_pamk_5<-cluster_test(5,100)
+```
+
+```{r, eval=FALSE}
+class_pamk_6<-cluster_test(6,100)
+```
+
+```{r, eval=FALSE}
+class_pamk_7<-cluster_test(7,100)
+```
+
+```{r, eval=FALSE}
+class_pamk_8<-cluster_test(8,100)
+```
+
+##Construct class model
+```{r, fig.height = 15, fig.width =15, fig.align = "center"}
+class_report <- function(class_pamk) {
+  dta_total <- cbind(cluster = class_pamk$pamobject$clustering,
+                     dta_big) %>% as.data.frame()
+  dta_pamk <- cbind(
+    cluster = class_pamk$pamobject$clustering,
+    dta_merged %>% select(
+      age,
+      age_group,
+      gender,
+      fincome,
+      asset,
+      education,
+      education_yrs,
+      occupation,
+      party,
+      hukou,
+      subjclass,
+      Watch_TV_DVD:work_out_at_gyms
+    )
+  )
+  summary_pamk <- dta_pamk %>% group_by(cluster) %>% summarise(
+    n(),
+    mean((gender %>% as.integer() -
+            1), na.rm = TRUE),
+    mean(age),
+    mean(fincome),
+    median(fincome),
+    mean(asset %>% as.integer()),
+    mean(education_yrs),
+    mean((party %>% as.integer() -
+            1), na.rm = TRUE),
+    mean((hukou %>% as.integer() -
+            1), na.rm = TRUE),
+    mean(subjclass %>% as.integer())
+  )
+  occupation_pamk <-
+    table(dta_pamk$cluster, dta_pamk$occupation) %>% as.data.frame()
+  #MCA based on the data
+  dta_mca_pamk <- cbind(
+    cluster = class_pamk$pamobject$clustering,
+    dta_merged %>% select(
+      age_group,
+      gender,
+      fincome_group,
+      asset,
+      education,
+      occupation,
+      party,
+      hukou,
+      subjclass,
+      #Watch_TV_DVD:work_out_at_gyms
+    )
+  )
+  mca_pamk <- MCA(
+    dta_mca_pamk,
+    quali.sup = 1,
+    ncp = 5,
+    na.method = "Average",
+    method = "Burt",
+    graph = FALSE
+  )
+  #Visualize MCA outcome
+  mca_pamk_plot <- fviz_mca_var(
+    mca_pamk,
+    axes = c(1, 2),
+    choice = "var.cat",
+    repel = TRUE,
+    map = "symmetric",
+    shape.var = "circle",
+    col.var = "orange2",
+    col.quali.sup = "black"
+  ) +
+    ggtitle("Space of Lifestyles in urban China",
+            subtitle = "Multiple Correspondence Analysis with Burt Method") +
+    labs(caption = "Source: CGSS2013") +
+    theme_classic()
+  output <- list(
+    summary_pamk,
+    occupation_pamk,
+    mca_pamk_plot,
+    class_pamk,
+    dta_mca_pamk,
+    mca_pamk,
+    dta_total
+  )
+  return(output)
+}
+```
+
+```{r}
+load("class_pamk_3.RData")
+class_model_3 <- class_report(class_pamk_3)
+class_model_3[[3]]
+class_model_3_model <- class_model_3[[4]]
+class_model_3_dta <- class_model_3[[7]]
+class_model_3_sum <- class_model_3[[1]]
+class_model_3_occ <- class_model_3[[2]]
+```
+
+```{r}
+cluster_social <- class_model_3_model$pamobject$clustering
+```
+
+##Constribution of variables
+```{r, echo=TRUE, warning=FALSE, fig.height = 7, fig.width = 15, fig.align = "center"}
+#Plot contribution of variables of first dimension
+contrib.plot1 <- fviz_contrib(
+  mca_leisure,
+  choice = "var",
+  axes = 1,
+  sort.val = "desc",
+  top = 10
+) +
+  xlab("variable group") +
+  labs(caption = "Source: Multiple Correspondence Analysis based on CFPS") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+#Plot contribution of variables of second dimension
+contrib.plot2 <- fviz_contrib(
+  mca_leisure,
+  choice = "var",
+  axes = 3,
+  sort.val = "desc",
+  top = 10
+) +
+  xlab("variable group") +
+  labs(caption = "Source: Multiple Correspondence Analysis based on CFPS") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+#Show together
+grid.arrange(contrib.plot1,
+             contrib.plot2,
+             ncol = 1)
+```
+
+```{r, echo=TRUE, warning=FALSE, fig.height = 7, fig.width = 15, fig.align = "center"}
+#Plot contribution of variables of first dimension
+contrib.plot1 <- fviz_contrib(
+  mca_social,
+  choice = "var",
+  axes = 1,
+  sort.val = "desc",
+  top = 10
+) +
+  xlab("variable group") +
+  labs(caption = "Source: Multiple Correspondence Analysis based on CFPS") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+#Plot contribution of variables of second dimension
+contrib.plot2 <- fviz_contrib(
+  mca_social,
+  choice = "var",
+  axes = 2,
+  sort.val = "desc",
+  top = 10
+) +
+  xlab("variable group") +
+  labs(caption = "Source: Multiple Correspondence Analysis based on CFPS") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+#Show together
+grid.arrange(contrib.plot1,
+             contrib.plot2,
+             ncol = 1)
+```
+
+---
+exclude: true
+
+##Introduction: Social Classes in China
+ - Lu Xueyi's team at China Academy of Social Sciences (2002)
+ 
+1. State and social administrators
+
+2. Managerial personnel
+
+3. Private entrepreneurs 
+
+4. Professional and technical personnel 
+
+5.  Clerical personnel 
+
+6. Individual-operated business proprietors 
+
+7. Commercial and service personnel
+
+8. Industrial workers 
+
+9. Agricultural laborers 
+
+10. Urban-rural jobless, unemployed, and partially unemployed
+
+---
+exclude: true 
+
+##Introduction: Social Classes in China (cont'd)
+.pull-left[
+ - David Goodman (2014)
+ 
+"In their initial description of class in contemporary China, the CASS sociology team had attempted to group the ten occupational classes they identified into five broad categories […]By 2010, the categories have been reduced to upper middle, lower middle and worker and by 2012  those braod categories had disappeared" (Goodman:2014, p,91)
+]
+
+.pull-right[
+Three Classes Model:
+
+1. Dominant Class = Political + Economical Elite
+
+2. Middle Class: Educated middle class + aspirant + lower middle class
+
+3. Subordinated workers
+]
+
+???
+
+Interesting model of social occupation, still use most of CGSS and CFPS
+Weak model of social classes based on a score variable
+
+---
+##Rise of cultural capital and consumer culture in the urban area
+ - Uneven distributed cultural capital
+
+ - Class distinction switching from statutory characteristics to cultural characteristic, from institutional status to "quality" (素质)
+
+ - "Quality" and "culture" as shaped residence, education, leisure, consumption and the middle class in the post-Maoist China (Tomba 2010; Anagost 2008). 
+
+##Approaching Social Class with an inquiry on lifestyle 
+ - Depicting how classified and classifying cultural practice shape class distinction in China, and ultimately relate to the perceived social class
+
+ - Bourdieu: "Social class is not defined by a property (not even the most determinant one, such as the volume and composition of capital) nor by a collection of properties (of sex, age, social origin, ethnic origin—proportion of black and whites for example, or native/immigrants, income, education level, etc.) nor even by a chain of properties strung out from a fundamental property (position in the chain of production) in a relation of cause and effect, conditioner and conditioned, but by the structure of relations between all the pertinent properties which gives its specific value to each of them and to the effects they exert on practices".
+
+---
+##Methodological considerations
+.pull-left[
+ - Bourdieusian theory can help produced heuristic assertions if and only if:
+
+1. The space of consumption is stratified (practices are not randomly distributed but can be classified highbrow/lowbrow)
+
+2. The Social Space is stratified
+
+3. An imperfect but still globally verified "structural homology" exist between the two spaces
+]
+
+.pull-right[
+ - Step before indentifying social classes through lifestye and consumption
+
+1. Construct the space of consumption
+
+2. Construct the social space
+
+3. Verify the structural analogy
+
+4. Produce stable clusters of individuals
+]
+
+???
+Orally: After a first study on CFPS, we produce a new research based on CGSS. 
+
+---
+##Constrcuting the space: Multiple Correspondence Analysis
+ - Similar to PCA (dimensionality reduction) but on categorical variables
+ 
+ - Visualize relational between groups of respondents with similar profiles in a space
+
+1. Create a table of dijunction with individuals in line and modality of answer 
+
+2. Diagonalize matrix to get eigen values and eigen vectors
+
+3. Project on bidimensional space
+
+4. Maximize the variance/inertia of vectors to determine dimensional axes
+
+---
+```{r, fig.height = 9, fig.width =15, fig.align = "center"}
+#Visualize MCA outcome
+fviz_mca_var(
+  mca_leisure,
+  axes = c(1, 3),
+  choice = "var.cat",
+  repel = TRUE,
+  map = "symmetric",
+  shape.var = "circle",
+  col.var = "orange2",
+  col.quali.sup = "black"
+) +
+  ggtitle("Space of Lifestyles in urban China",
+          subtitle = "Multiple Correspondence Analysis with Burt Method") +
+  labs(caption = "Source: CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+---
+```{r}
+#Visualize individual households in MCA by several measures
+#Visualize individual households in MCA by several measures
+fviz_mca_ind(
+  mca_social_0,
+  axes = c(1, 3),
+  label = "none",
+  habillage = 1,
+  palette = "Set1",
+  addEllipses = TRUE,
+  ellipse.level = 0.5
+) +
+  ggtitle("Lifestyle categories projected on the space of lifestyle in urban China",
+          subtitle = "Ellipse covering 50% in group") +
+  labs(caption = "Source: Bootstrapped hierarchical and K-means Clustering clustering based on CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+---
+
+```{r}
+#Visualize individual households in MCA by several measures
+fviz_mca_ind(
+  mca_social,
+  axes = c(1, 3),
+  label = "none",
+  habillage = 1,
+  palette = "Set1",
+  addEllipses = TRUE,
+  ellipse.level = 0.5
+) +
+  ggtitle(
+    "Verifying Structural homology: lifestyle categories projected on the social space",
+    subtitle = "Ellipse covering 50% in group"
+  ) +
+  labs(caption = "Source: Bootstrapped K-medoid clustering on CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+---
+##An exploratory class model
+ 
+ - K-medoid clustering with flexible dissimilarity calculation for all types of variables
+ 
+ - Little statistical assumption compared with LCA
+ 
+ - Bootstrapped result to ensure cluster robustness
+ 
+ - A set if input variables on economic resources (income, asset), cultural resource (educational credential), occupational status (EGP coded occupation), institutional advantage (hukou and party membership), and lifestyle (first two dimensions returned by MCA)
+ 
+???
+socio-economic resources, including economic (household income and asset index), cultural (diploma), occupational (occupation coded with EGP scheme), political (party membership), and institutional advantage (household registration status). Income is taken as ln(income+50) in order to improve the sensitivity towards heavily right-skewed income distribution. The asset is an index constructed by the sum of the number of homes owned and car ownership and financial investment ownership. All continuous variables (age and household income) have been recoded into 5 groups using quantile values
+
+
+---
+##A three "class" model: lifestyles
+1. Urban proletarian class: the taste of necessity
+ - 73% of people declare that they are likely or very likely to purchase only living goods apart from particular needs. 
+ - 77% of the proletarian think they are unlikely or very unlikely to have dinner outside at celebration occasions
+ - 89% of theme declare being unlikely or very unlikely to often shop at popular malls
+ - 72% of them had never gone to the cinema to see a movie and 37% never do reading in the past year 
+
+2. Urban working class: parsimonious consumptions
+ - 53% in this group watch movies in cinema several times a year
+ - 89% have some readings in the past year. 
+ - 81% had listened to music at home sometime in the past year. 
+ - Majority still restrained to take a car when going out, or valuable durables and high-end artwork at home
+
+3. The dominant class: consumers with suzhi
+ - More than half disagree with the idea that they do not buy goods beyond necessary, have the habit to have a meal and social at restaurants. 
+ - Nearly half somewhat or strongly agree that they often visit popular shops, and mainly rely on the car for transportation. 
+ - Very few of them will strongly disagree with the idea to have valuable durables and high-end artwork at home
+
+---
+##A three "class" model: socio-economic profiles
+
+1. Urban proletarian class
+ - Though all residing in the urban area, 87% of individuals in this group do not possess an urban hukou. 84% of people without an urban hukou are in this group as well. 
+ - Only 9% of them own degree above high school
+ - household income medians at ¥40,000 per year
+ - Semi-unskilled manual, skilled manual, independent and farm worker account for 73.2% of the proletarian class
+
+2. Urban working class
+ - 87% in this group hold an urban hukou
+ - Finishing high school (32.2%) and a non-negligible amount of graduate (12% of bachelor and above, and 18.8% of vocational school graduate)
+ - This class median income is 50% more than the urban proletarian class
+ - Composed by middle class aspirant and established worker, lower and a few higher service
+
+3. The dominant class 
+ - 91% of urban hukou, 25% of Party members
+ - 71%of them hold a vocational or bachelor degree
+ - the median household income reach ¥96,500
+ - 41.6% of higher service, 23,7% of lower service
+
+---
+```{r}
+tm_shape(parcel) +
+  tm_fill("cultural",
+          title = "%Dominant class in urban area",
+          palette = "BuPu") +
+  tm_borders(col = "black") +
+  tm_layout(
+    legend.title.size = 2,
+    legend.text.size = 1.5,
+    legend.position = c("left", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0
+  )
+```
+
+---
+```{r}
+tm_shape(parcel) +
+  tm_fill("economic",
+          title = "%Working class in urban area",
+          palette = "GnBu") +
+  tm_borders(col = "black") +
+  tm_layout(
+    legend.title.size = 2,
+    legend.text.size = 1.5,
+    legend.position = c("left", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0
+  )
+```
+
+---
+```{r}
+tm_shape(parcel) +
+  tm_fill("lower",
+          title = "%Proletarian class in urban area",
+          palette = "OrRd") +
+  tm_borders(col = "black") +
+  tm_layout(
+    legend.title.size = 2,
+    legend.text.size = 1.5,
+    legend.position = c("left", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0
+  )
+```
+
+---
+##What's next?
+ - Account for geographical variation, local neighbourhood and culture, etc.
+ 
+ - Measurement of lifestyle: health habit, housing condition, leisure and travel, etc.
+ 
+ - A multi-ladder model
