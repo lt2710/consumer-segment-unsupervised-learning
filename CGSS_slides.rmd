@@ -23,6 +23,8 @@ background-size: 100%
 background-position: 50% 280%
 
 ```{r setup, include=FALSE}
+setwd("C:/Users/Tianl/Documents/GitHub/consumer-segment-unsupervised-learning")
+rm(list = ls())#clear environment
 #Set up default knitr chunk options
 library("knitr")
 knitr::opts_chunk$set(
@@ -30,13 +32,14 @@ knitr::opts_chunk$set(
   eval = TRUE,
   message = FALSE,
   warning = FALSE,
-  fig.height = 9,
+  fig.height = 12,
   fig.width = 15,
   fig.align = "center",
   cache = TRUE,
   cache.lazy = FALSE
 )
 options(htmltools.dir.version = FALSE)
+options(qwraps2_markup = "markdown")
 ```  
 
 ```{r theme-map, include=FALSE}
@@ -62,15 +65,11 @@ theme_simplemap <- function(base_size = 9,
 ##Setup
 ```{r packages, message = FALSE, warning = FALSE, echo=FALSE}
 # Load packages.
-packages <- c("tidyr", 
-              "dplyr",
-              "stringr",
-              "purrr", 
-              "data.table", 
+packages <- c("tidyverse", 
               "knitr",
               "ggplot2",
               "gridExtra",
-              "readstata13",
+              "qwraps2",
               "FactoMineR",
               "factoextra",
               "jtools"
@@ -84,12 +83,12 @@ packages <- lapply(packages, FUN = function(x) {
 )
 ```
 
-```{r, echo=TRUE, warning=FALSE}
-setwd("C:/Users/Tianl/Documents/GitHub/consumer-segment-unsupervised-learning")
-load("dta_merged.RData")
-load("cgss_raw.RData")
+```{r} 
+load("cgss_unimputed.RData")
 load("cgss.RData")
+dta_merged<-cgss_unimputed
 ```
+
 ---
 exclude: true
 
@@ -198,16 +197,36 @@ Orally: After a first study on CFPS, we produce a new research based on CGSS.
 
 ---
 exclude: true
+
+```{r}
+dta_merged<-
+  dta_merged %>%
+  mutate(fincome_group = fincome_group%>%
+           recode(income_v_low = "<￥2.5k/yr",
+                  income_low = "￥2.5-4.5k/yr",
+                  income_mid = "￥4.5-6k/yr",
+                  income_high = "￥6-10k/yr",
+                  income_v_high = ">￥10k/yr"),
+         age_group = age_group%>%
+           recode(age_v_low = "born 1990s",
+                  age_low = "born 1980s",
+                  age_mid = "born 1970s",
+                  age_high = "born 1960s",
+                  age_v_high = "born 1950s")
+         ) 
+```
+
 ##Construct social space
 ```{r}
 #MCA based on the data
-dta_mca_society <- dta_merged %>% select(age_group,
-                                         gender,
-                                         fincome_group,
-                                         education,
-                                         occupation,
-                                         party,
-                                         hukou)
+dta_mca_society <- dta_merged %>%
+  select(age_group,
+         gender,
+         fincome_group,
+         education,
+         occupation,
+         party,
+         hukou)
 mca_society <- MCA(
   dta_mca_society,
   ncp = 5,
@@ -217,7 +236,7 @@ mca_society <- MCA(
 )
 ```
 
-```{r, echo=TRUE, warning=FALSE, fig.height = 7, fig.width =15, fig.align = "center"}
+```{r,eval=FALSE, fig.height = 7, fig.width =15, fig.align = "center"}
 #Visualize MCA outcome
 fviz_mca_var(
   mca_society,
@@ -247,16 +266,68 @@ dta_mca_leisure <- dta_merged %>% select(
   occupation,
   party,
   hukou,
+  subjclass,
   Watch_TV_DVD:work_out_at_gyms
 )
 mca_leisure <- MCA(
   dta_mca_leisure,
-  quali.sup = 1:8,
+  quali.sup = 1:9,
   ncp = 5,
   na.method = "Average",
   method = "Burt",
   graph = FALSE
 )
+```
+
+```{r}
+summary_table(dta_mca_leisure)
+```
+
+```{r}
+fviz_screeplot(mca_leisure,
+               choice = "variance",
+               ncp = 5,
+               addlabels = TRUE) +
+  xlab("variable group") +
+  labs(caption = "Source: CGSS2013") +
+  ggtitle("MCA screenplot") +
+  xlab("Princple components") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+```{r fig.height=15, fig.width=20, dpi=600}
+#Visualize MCA outcome
+fviz_mca_var(
+  mca_leisure,
+  axes = c(1, 2),
+  choice = "var.cat",
+  repel = TRUE,
+  map = "symmetric",
+  shape.var = "circle",
+  col.var = "orange2",
+  col.quali.sup = "black",
+  autoLab = "yes"
+) +
+  ggtitle("Space of Lifestyles in urban China",
+          subtitle = "Multiple Correspondence Analysis with Burt Method") +
+  labs(caption = "Source: CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+```{r}
+fviz_mca_ind(
+  mca_leisure,
+  axes = c(1, 2),
+  geom = "point", 
+  col.ind = "orange2"
+) +
+  ggtitle("Space of Lifestyles in urban China",
+          subtitle = "Multiple Correspondence Analysis with Burt Method") +
+  labs(caption = "Source: CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
 ```
 
 ```{r}
@@ -277,6 +348,21 @@ fviz_mca_var(
   theme_classic() +
   theme(text = element_text(size = 20))
 ```
+
+```{r}
+fviz_mca_ind(
+  mca_leisure,
+  axes = c(1, 3),
+  geom = "point", 
+  col.ind = "orange2"
+) +
+  ggtitle("Space of Lifestyles in urban China",
+          subtitle = "Multiple Correspondence Analysis with Burt Method") +
+  labs(caption = "Source: CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
 
 ---
 exclude: true
@@ -309,11 +395,11 @@ kmeans_test <- function(num, nboot) {
 }
 ```
 
-```{r}
+```{r, eval=FALSE}
 class_km_3 <- kmeans_test(3, 1000)
 ```
 
-```{r, eval=FALSE}
+```{r}
 class_km_4<-kmeans_test(4,1000)
 ```
 
@@ -403,7 +489,7 @@ grid.arrange(bnclust_gap_plot1,
 km_leisure <- km_leisure
 res <- hcut(
   km_leisure,
-  k = 7,
+  k = 4,
   hc_func = "hclust",
   hc_method = "ward.D",
   hc_metric = "euclidean",
@@ -414,7 +500,7 @@ res <- hcut(
 hcd <- as.dendrogram(res)
 hcd_cut <- cut(hcd, h = 10)
 fviz_dend(hcd_cut$upper,
-          k = 3,
+          k = 4,
           palette = "jco",
           show_labels = FALSE) +
   ggtitle("Dendrogram Plot from Hierarchical Clustering",
@@ -425,16 +511,21 @@ fviz_dend(hcd_cut$upper,
 
 ##Map lifesyle clusters on lifestyle space
 ```{r}
-ward_kmeans_3 <- ward_kmeans(km_leisure, 4)
-clusters_lifestyle <- ward_kmeans_3$cluster
+ward_kmeans_result <- ward_kmeans(km_leisure, 4)
+clusters_lifestyle <- ward_kmeans_result$cluster
 #MCA based on the data
 dta_mca_social <- cbind(clusters_lifestyle,
                         dta_merged %>% select(Watch_TV_DVD:work_out_at_gyms)) %>%
-  as.data.frame()
+  as.data.frame() %>%
+  mutate(clusters_lifestyle = clusters_lifestyle%>%
+           recode_factor(`1`="the disengaged",
+                         `2`="the parsimonious consumers",
+                         `3`="the ascetic practitioners",
+                         `4`="the consumers-buyers"))
 mca_social_0 <- MCA(
   dta_mca_social,
   quali.sup = 1,
-  ncp = 3,
+  ncp = 5,
   na.method = "Average",
   method = "Burt",
   graph = FALSE
@@ -457,9 +548,27 @@ fviz_mca_var(
 ```
 
 ---
+```{r dpi=600}
+#Visualize individual households in MCA by several measures 
+fviz_mca_ind(
+  mca_social_0,
+  axes = c(1, 2),
+  label = "none",
+  habillage = 1,
+  palette = "Set1",
+  addEllipses = TRUE,
+  ellipse.level = 0.8
+) +
+  ggtitle("Lifestyle categories on the space of lifestyle in urban China",
+          subtitle = "Ellipse covering 80% in group") +
+  labs(caption = "Source: CGSS2013") +
+  theme_classic() +
+  theme(text = element_text(size = 20))
+```
+
+
 ```{r}
-#Visualize individual households in MCA by several measures
-#Visualize individual households in MCA by several measures
+#Visualize individual households in MCA by several measures 
 fviz_mca_ind(
   mca_social_0,
   axes = c(1, 3),
@@ -467,11 +576,11 @@ fviz_mca_ind(
   habillage = 1,
   palette = "Set1",
   addEllipses = TRUE,
-  ellipse.level = 0.5
+  ellipse.level = 0.8
 ) +
-  ggtitle("Lifestyle categories projected on the space of lifestyle in urban China",
-          subtitle = "Ellipse covering 50% in group") +
-  labs(caption = "Source: Bootstrapped hierarchical and K-means Clustering clustering based on CGSS2013") +
+  ggtitle("Lifestyle categories on the space of lifestyle in urban China",
+          subtitle = "Ellipse covering 80% in group") +
+  labs(caption = "Source: CGSS2013") +
   theme_classic() +
   theme(text = element_text(size = 20))
 ```
@@ -492,7 +601,7 @@ dta_mca_social <- cbind(
 mca_social <- MCA(
   dta_mca_social,
   quali.sup = 1,
-  ncp = 3,
+  ncp = 5,
   na.method = "Average",
   method = "Burt",
   graph = FALSE
@@ -537,6 +646,22 @@ fviz_mca_ind(
   theme(text = element_text(size = 20))
 ```
 
+```{r}
+disengaged <-
+  dta_mca_social %>% filter(clusters_lifestyle == 1) %>% summary_table()
+parsimonious <-
+  dta_mca_social %>% filter(clusters_lifestyle == 2) %>% summary_table()
+cultural <-
+  dta_mca_social %>% filter(clusters_lifestyle == 3) %>% summary_table()
+material <-
+  dta_mca_social %>% filter(clusters_lifestyle == 4) %>% summary_table()
+cbind(disengaged,
+      parsimonious,
+      cultural,
+      material)
+```
+
+
 ---
 exclude: true
 
@@ -544,13 +669,10 @@ exclude: true
 dta_big <- inner_join(dta_merged %>% select(id),
                       cgss %>% select(id, age:work_out_at_gyms),
                       by = "id")
-dta_big <- inner_join(dta_big,
-                      cgss_raw,
-                      by = "id")
 dta_final <-
   cbind(dta_big, km_leisure, clusters_lifestyle) %>% mutate(fincome = fincome /
                                                               10000)
-save.dta13(dta_final, file = "cgss_dta_merged.dta")
+readstata13::save.dta13(dta_final, file = "cgss_dta_merged.dta")
 library(rgdal)
 library(tmap)
 parcel <- readOGR(dsn = "chn_admbnda_adm1_ocha",
@@ -658,50 +780,22 @@ dta <- cbind(
   dim5 = km_leisure$Dim.5,
   dta_final
 )
-lm_1 <- lm(
-  subjclass %>% as.numeric() ~
+library(mlogit) 
+data("dta", package = "mlogit")
+dta <- dfidx(dta, choice = "clusters_lifestyle",shape = "wide", idx = NULL)
+lm_1 <- mlogit::mlogit(
+  clusters_lifestyle ~
+    1 |
     age +
     gender +
     fincome +
-    asset %>% as.numeric() +
     education_yrs +
-    occupation %>% as.numeric() +
     party +
     hukou
-  ,
-  data = dta
+  ,reflevel = "2"
+  ,data = dta
 )
-lm_2 <- lm(
-  subjclass %>% as.numeric() ~
-    age +
-    gender +
-    fincome +
-    asset %>% as.numeric() +
-    education_yrs +
-    occupation %>% as.numeric() +
-    party +
-    hukou +
-    clusters_lifestyle
-  ,
-  data = dta
-)
-lm_3 <- lm(
-  subjclass %>% as.numeric() ~
-    age +
-    gender +
-    fincome +
-    asset %>% as.numeric() +
-    education_yrs +
-    occupation %>% as.numeric() +
-    party +
-    hukou +
-    dim1 +
-    dim2 +
-    dim3
-  ,
-  data = dta
-)
-export_summs(lm_1, lm_2, lm_3)
+summary(lm_1)
 ```
 
 ---
@@ -934,6 +1028,7 @@ class_model_3_occ <- class_model_3[[2]]
 ```{r}
 cluster_social <- class_model_3_model$pamobject$clustering
 ```
+
 
 ##Constribution of variables
 ```{r, echo=TRUE, warning=FALSE, fig.height = 7, fig.width = 15, fig.align = "center"}

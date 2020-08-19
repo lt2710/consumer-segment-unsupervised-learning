@@ -5,6 +5,8 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+rm(list = ls())#clear environment
+setwd("C:/Users/Tianl/Documents/GitHub/consumer-segment-unsupervised-learning")
 #Set up default knitr chunk options
 library("knitr")
 knitr::opts_chunk$set(
@@ -46,14 +48,9 @@ packages <- lapply(packages, FUN = function(x) {
 ```
 
 ```{r}
-setwd("C:/Users/Tianl/Documents/GitHub/consumer-segment-unsupervised-learning")
-```
-
-```{r}
 #Function to recode numeric variables to factor with 5 levels according to top values
 recode_numeric <- function(var, prefix = "", tile = 0.9) {
-  top1 <-
-    quantile(var, tile, na.rm = TRUE)#First group by default is top 10%
+  top1 <- quantile(var, tile, na.rm = TRUE)#First group by default is top 10%
   top2 <- top1 * 2 / 3#Bottome line of second group is 2/3 of first one
   top3 <- top2 / 2#Next group's bottom line is 1/2 of previous
   top4 <- top3 / 3#Next group's bottom line is 1/3 of previous
@@ -76,236 +73,210 @@ recode_numeric <- function(var, prefix = "", tile = 0.9) {
 #Import data and labels on household economic activiy
 cgss_raw <- read.dta13("cgss2013_14.dta", convert.factors = TRUE)
 #Focus only on urban households
-cgss <- cgss_raw %>% filter(s5a %>% as.integer() %in% c(2, 3, 4, 5))
-```
-
-```{r}
-cgss$age <- 2013 - cgss$a3a
-cgss$age_group <-
-  cut(
-    cgss$age,
-    breaks = c(quantile(cgss$age, probs = seq(0, 1, by = 0.2))),
-    labels = c("age_v_low", "age_low", "age_mid", "age_high", "age_v_high"),
-    include.lowest = TRUE
+cgss <- cgss_raw %>% 
+  filter(s5a %>% 
+           as.integer() %in% 
+           c(2, 3, 4, 5)) %>%
+  mutate(age = 2013 - a3a,
+         age_group = age %>% 
+           cut(age,
+               breaks = c(quantile(age, probs = seq(0, 1, by = 0.2))),
+               labels = c("age_v_low", "age_low", "age_mid", "age_high", "age_v_high"),
+               include.lowest = TRUE),
+         province = s41 %>% 
+           as.integer() %>%
+           recode_factor(
+             `1` = "Shanghai Municipality",
+             `2` = "Yunnan Province",
+             `3` = "Inner Mongolia Autonomous Region",
+             `4` = "Beijing Municipality",
+             `5` = "Jilin Province",
+             `6` = "Sichuan Province",
+             `7` = "Tianjin Municipality",
+             `8` = "Ningxia Hui Autonomous Region",
+             `9` = "Anhui Province",
+             `10` = "Shandong Province",
+             `11` = "Shanxi Province",
+             `12` = "Guangdong Province",
+             `13` = "Guangxi Zhuang Autonomous Region",
+             `15` = "Jiangsu Province",
+             `16` = "Jiangxi Province",
+             `17` = "Hebei Province",
+             `18` = "Henan Province",
+             `19` = "Zhejiang Province",
+             `21` = "Hubei Province",
+             `22` = "Hunan Province",
+             `23` = "Gansu province",
+             `24` = "Fujian Province",
+             `26` = "Guizhou Province",
+             `27` = "Liaoning Province",
+             `28` = "Chongqing Municipality",
+             `29` = "Shaanxi Province",
+             `30` = "Qinghai Province",
+             `31` = "Heilongjiang Province"
+           ),
+         gender = a2 %>% 
+           as.integer() %>% 
+           recode_factor(`4` = "male",
+                         `5` = "female"),
+         subjclass = a43a %>% 
+           as.numeric() %>%
+           na_if(-3)%>%
+           na_if(-2)%>%
+           na_if(-1)%>%
+           recode(`9`= 8,
+                  `10`= 8) %>%
+           as.character()%>%
+           str_c("_subj_class")%>%
+           as.factor(),
+         community = s5b %>% 
+           as.integer() %>%
+           na_if(8) %>% 
+           recode(
+             `1` = "Old city zone",
+             `2` = "working unit community",
+             `3` = "rural/public housing",
+             `4` = "commodity housing",
+             `5` = "commodity housing",
+             `6` = "rural/public housing",
+             `7` = "rural/public housing"
+           ),
+         education = a7a %>% 
+           as.integer() %>%
+           na_if(1) %>%
+           na_if(17) %>%
+           recode_factor(
+             `4` = "MS&Below",
+             `5` = "MS&Below",
+             `6` = "MS&Below",
+             `7` = "MS&Below",
+             `8` = "High school",
+             `9` = "High school",
+             `10` = "High school",
+             `11` = "Voc",
+             `12` = "Voc",
+             `13` = "Voc",
+             `14` = "Bache",
+             `15` = "Bache",
+             `16` = "Bache"
+           ),
+         education_yrs = a7a %>% 
+           as.integer() %>%
+           na_if(1) %>%
+           na_if(17) %>%
+           recode(
+             `4` = 0,
+             `5` = 6,
+             `6` = 6,
+             `7` = 9,
+             `8` = 9,
+             `9` = 9,
+             `10` = 9,
+             `11` = 9,
+             `12` = 12,
+             `13` = 12,
+             `14` = 13,
+             `15` = 13,
+             `16` = 15
+           ),
+         fincome = a62 %>%
+           as.numeric()%>%
+           recode(`9999996` = 1000000) %>%
+           na_if(9999997) %>%
+           na_if(9999998) %>%
+           na_if(9999999),
+         fincome_ln = log(fincome + 50),
+         fincome_group = cut(
+           fincome_ln,
+           breaks = c(quantile(
+             fincome_ln,
+             probs = seq(0, 1, 0.2),
+             na.rm = TRUE
+           )),
+           labels = c(
+             "income_v_low",
+             "income_low",
+             "income_mid",
+             "income_high",
+             "income_v_high"
+           ),
+           include.lowest = TRUE
+         ),
+         home_num = a65 %>%
+           na_if(-3) %>%
+           na_if(-2) %>%
+           recode_factor(
+             `0` = "No home",
+             `1` = "One home",
+             `2` = "Two homes or more",
+             .default = "Two homes or more"
+           ),
+         car = a66 %>% 
+           as.integer() %>%
+           na_if(1) %>%
+           recode_factor(`4` = "owns car",
+                         `5` = "no car"),
+         car_num = car %>% as.integer() * -1 + 2,
+         finance = (
+           a671 %>% as.integer() == 5 |
+             a672 %>% as.integer() == 5 |
+             a673 %>% as.integer() == 5 |
+             a674 %>% as.integer() == 5 |
+             a675 %>% as.integer() == 5 |
+             a676 %>% as.integer() == 5 |
+             a677 %>% as.integer() == 5 |
+             a678 %>% as.integer() == 5
+         ),
+         asset = (a65 %>%
+                    na_if(-3) %>%
+                    na_if(-2) + 
+                    car_num + 
+                    finance)%>%
+           recode_factor(
+             `0` = "Zero asset",
+             `1` = "One asset",
+             `2` = "Two assets",
+             `3` = "Three assets", 
+             .default = "Four assets or more"
+           ),
+         occupation = EGP %>% 
+           recode_factor(
+             `1` = "Higher service",
+             `2` = "Lower service",
+             `3` = "Routine clerical/sales",
+             `4` = "Small employer",
+             `5` = "Independent",
+             `7` = "Manual foreman",
+             `8` = "Skilled manual",
+             `9` = "Semi-unskilled manual",
+             `10` = "Farm workers",
+             `11` = "Farm workers"
+           ),
+         party = a10 %>% 
+           as.integer() %>%
+           na_if(1) %>%
+           recode_factor(
+             `4` = "party member",
+             `5` = "non party member",
+             `6` = "non party member",
+             `7` = "non party member"
+           ),
+         hukou = a18 %>%
+           as.integer() %>%
+           na_if(1)%>%
+           na_if(10)%>%
+           na_if(11) %>% 
+           recode_factor(
+             `4` = "agricultural hukou",
+             `5` = "non-agricultural hukou",
+             `6` = "agricultural hukou",
+             `7` = "agricultural hukou",
+             `8` = "non-agricultural hukou",
+             `9` = "non-agricultural hukou"
+           )
   )
-cgss$age_group %>% table()
-```
-
-```{r}
-cgss$province <-
-  cgss$s41 %>% as.integer %>% recode_factor(
-    `1` = "Shanghai Municipality",
-    `2` = "Yunnan Province",
-    `3` = "Inner Mongolia Autonomous Region",
-    `4` = "Beijing Municipality",
-    `5` = "Jilin Province",
-    `6` = "Sichuan Province",
-    `7` = "Tianjin Municipality",
-    `8` = "Ningxia Hui Autonomous Region",
-    `9` = "Anhui Province",
-    `10` = "Shandong Province",
-    `11` = "Shanxi Province",
-    `12` = "Guangdong Province",
-    `13` = "Guangxi Zhuang Autonomous Region",
-    `15` = "Jiangsu Province",
-    `16` = "Jiangxi Province",
-    `17` = "Hebei Province",
-    `18` = "Henan Province",
-    `19` = "Zhejiang Province",
-    `21` = "Hubei Province",
-    `22` = "Hunan Province",
-    `23` = "Gansu province",
-    `24` = "Fujian Province",
-    `26` = "Guizhou Province",
-    `27` = "Liaoning Province",
-    `28` = "Chongqing Municipality",
-    `29` = "Shaanxi Province",
-    `30` = "Qinghai Province",
-    `31` = "Heilongjiang Province"
-  )
-cgss$province %>% table()
-```
-
-```{r}
-cgss$gender <- cgss$a2 %>% as.integer %>% recode_factor(`4` = "male",
-                                                        `5` = "female")
-cgss$gender %>% table()
-```
-
-```{r}
-cgss$subjclass <- cgss$a43a %>% as.integer()
-cgss$subjclass[cgss$subjclass < 0] <- NA
-cgss$subjclass[cgss$subjclass %in% c(8:10)] <- 8
-cgss$subjclass <- cgss$subjclass %>% factor()
-cgss$subjclass %>% table()
-```
-
-```{r housing community}
-cgss$community <- cgss$s5b %>% as.integer()
-cgss$community[cgss$community == 8] <- NA
-cgss$community <-
-  cgss$community %>% as.integer() %>% recode(
-    `1` = "Old city zone",
-    `2` = "working unit community",
-    `3` = "rural/public housing",
-    `4` = "commodity housing",
-    `5` = "commodity housing",
-    `6` = "rural/public housing",
-    `7` = "rural/public housing"
-  )
-cgss$community %>% table
-```
-
-```{r education}
-cgss$education <- cgss$a7a %>% as.integer()
-cgss$education[cgss$education %in% c(1, 17)] <- NA
-cgss$education <- cgss$education %>% recode_factor(
-  `4` = "MS&Below",
-  `5` = "MS&Below",
-  `6` = "MS&Below",
-  `7` = "MS&Below",
-  `8` = "High school",
-  `9` = "High school",
-  `10` = "High school",
-  `11` = "Voc",
-  `12` = "Voc",
-  `13` = "Voc",
-  `14` = "Bache",
-  `15` = "Bache",
-  `16` = "Bache"
-)
-cgss$education_yrs <- cgss$a7a %>% as.integer()
-cgss$education_yrs[cgss$education_yrs %in% c(1, 17)] <- NA
-cgss$education_yrs <- cgss$education_yrs %>% recode(
-  `4` = 0,
-  `5` = 6,
-  `6` = 6,
-  `7` = 9,
-  `8` = 9,
-  `9` = 9,
-  `10` = 9,
-  `11` = 9,
-  `12` = 12,
-  `13` = 12,
-  `14` = 13,
-  `15` = 13,
-  `16` = 15
-)
-cgss$education %>% table
-```
-
-```{r fam income}
-cgss$fincome <- cgss$a62
-cgss$fincome[cgss$fincome == 9999996] <- 1000000
-cgss$fincome[cgss$fincome == 9999997] <- NA
-cgss$fincome[cgss$fincome == 9999998] <- NA
-cgss$fincome[cgss$fincome == 9999999] <- NA
-cgss$fincome_ln <- log(cgss$fincome + 50)
-cgss$fincome_group <-
-  cut(
-    cgss$fincome_ln,
-    breaks = c(quantile(
-      cgss$fincome_ln,
-      probs = seq(0, 1, 0.2),
-      na.rm = TRUE
-    )),
-    labels = c(
-      "income_v_low",
-      "income_low",
-      "income_mid",
-      "income_high",
-      "income_v_high"
-    ),
-    include.lowest = TRUE
-  )
-cgss$fincome_group %>% table()
-```
-
-```{r home}
-cgss$home_num <- cgss$a65
-cgss$home_num[cgss$home_num < 0] <- NA
-cgss$home <- cgss$home_num
-cgss$home[cgss$home > 2] <- 3
-cgss$home <- cgss$home %>% recode_factor(
-  `0` = "No home",
-  `1` = "One home",
-  `2` = "Two homes or more",
-  `3` = "Two homes or more"
-)
-table(cgss$home)
-```
-
-```{r car}
-cgss$car <- cgss$a66 %>% as.integer()
-cgss$car[cgss$car == 1] <- NA
-cgss$car <- cgss$car %>% recode_factor(`4` = "owns car",
-                                       `5` = "no car")
-cgss$car %>% table()
-```
-
-```{r asset}
-cgss$car_num <- cgss$car %>% as.integer() * -1 + 2
-
-cgss <- cgss %>% mutate(
-  finance = (
-    cgss$a671 %>% as.integer() == 5 |
-      cgss$a672 %>% as.integer() == 5 |
-      cgss$a673 %>% as.integer() == 5 |
-      cgss$a674 %>% as.integer() == 5 |
-      cgss$a675 %>% as.integer() == 5 |
-      cgss$a676 %>% as.integer() == 5 |
-      cgss$a677 %>% as.integer() == 5 |
-      cgss$a678 %>% as.integer() == 5
-  )
-)
-cgss <- cgss %>% mutate(asset = home_num + car_num + finance)
-cgss$asset[cgss$asset > 4] <- 4
-cgss$asset <- cgss$asset %>% str_c(" asset") %>% as.factor()
-cgss$asset %>% table()
-```
-
-```{r EGP occupation}
-cgss$occupation <- cgss$EGP %>% recode_factor(
-  `1` = "Higher service",
-  `2` = "Lower service",
-  `3` = "Routine clerical/sales",
-  `4` = "Small employer",
-  `5` = "Independent",
-  `7` = "Manual foreman",
-  `8` = "Skilled manual",
-  `9` = "Semi-unskilled manual",
-  `10` = "Farm workers",
-  `11` = "Farm workers"
-)
-cgss$occupation %>% table()
-```
-
-
-```{r party}
-cgss$party <- cgss$a10 %>% as.integer()
-cgss$party[cgss$party == 1] <- NA
-cgss$party <- cgss$party %>% recode_factor(
-  `4` = "party member",
-  `5` = "non party member",
-  `6` = "non party member",
-  `7` = "non party member"
-)
-cgss$party %>% table()
-```
-
-```{r hukou}
-cgss$hukou <- cgss$a18 %>% as.integer()
-cgss$hukou[cgss$hukou %in% c(1, 10, 11)] <- NA
-cgss$hukou <- cgss$hukou %>% recode_factor(
-  `4` = "agrecultural hukou",
-  `5` = "non-agricultural hukou",
-  `6` = "agrecultural hukou",
-  `7` = "agrecultural hukou",
-  `8` = "non-agricultural hukou",
-  `9` = "non-agricultural hukou"
-)
-cgss$hukou %>% table()
-```
+``` 
+ 
 ```{r leisure}
 leisure <- NULL
 for (i in 1:12) {
@@ -377,7 +348,7 @@ for (i in 1:13) {
               "12",
               "13")
   activity <- c(
-    "only_buy_necissity",
+    "only_buy_necessity",
     "eat_out_social",
     "shop_brands",
     "stressful_work",
@@ -403,10 +374,10 @@ for (i in 1:13) {
   }
   var <-
     var %>% recode_factor(
-      `4` = paste(activity[i], "_very_likely", sep = ""),
-      `5` = paste(activity[i], "_likely", sep = ""),
-      `6` = paste(activity[i], "_unlikely", sep = ""),
-      `7` = paste(activity[i], "_very_unlikely", sep = "")
+      `4` = paste(activity[i], "+ +", sep = ""),
+      `5` = paste(activity[i], "+", sep = ""),
+      `6` = paste(activity[i], "-", sep = ""),
+      `7` = paste(activity[i], "- -", sep = "")
     )
   consumption <- consumption %>% cbind(var %>% as.character())
 }
@@ -418,11 +389,17 @@ lapply(consumption, table)
 
 ```{r}
 #Save data for multiple correspondence analysis
-dta_merged <- cgss %>% select(
-  id,
-  age:work_out_at_gyms,-visit_friend,-visit_relative,-stressful_work,-comfortable_with_life,-no_social_w_lower_class
-) %>% na.omit()
-save(dta_merged,file="dta_merged.RData")
-save(cgss_raw,file="cgss_raw.RData")
+cgss <- cgss %>%
+  select(
+    id,
+    age:work_out_at_gyms, 
+    -visit_friend, 
+    -visit_relative, 
+    -stressful_work, 
+    -comfortable_with_life, 
+    -no_social_w_lower_class
+  )
+cgss_unimputed <- cgss %>% na.omit()
+save(cgss_unimputed,file="cgss_unimputed.RData")
 save(cgss,file="cgss.RData")
 ```
