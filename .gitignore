@@ -1,7 +1,7 @@
 *.RData
-*.dta
 *.xlsx
 *.pdf
 *.docx
 *.PNG
+*.png
 !Presentation_ISA_RC28_2019.pdf
